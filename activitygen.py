@@ -44,7 +44,7 @@ def get_options(cmd_args):
         prog='activitygen.py', usage='%(prog)s -c configuration.json',
         description='SUMO Activity-Based Mobility Generator')
     parser.add_argument(
-        '-c', type=str, dest='config', required=True,
+        '-c', type=str, dest='config', default="../osm_activitygen.json", required=False,
         help='JSON configuration file.')
     parser.add_argument(
         '--profiling', dest='profiling', action='store_true',
@@ -253,84 +253,104 @@ class MobilityGenerator():
             if self._profiling:
                 _pr = cProfile.Profile()
                 _pr.enable()
+            
+            max_population = 0 
+            for building_info in self._env._building_additionals_by_poly.values():
+                max_population += building_info[1]
 
-            for entity_id in tqdm(range(m_slice['tot'])):
-                ## Select the activity chain
-                _index = self._random_generator.choice(
-                    activity_index, p=activity_chains_weights)
-                _chain, _modes = activity_chains[_index]
-                self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
-                self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
+            with tqdm(total=max_population) as pbar:
+                entity_id = 1
+                for taz_id in self._env._buildings_by_taz:
+                    taz_buildings = self._env._buildings_by_taz[taz_id]
+                    for id, cum_sum, g_edge, p_edge, weight in taz_buildings:
+                        if id not in self._env._building_additionals_by_poly:
+                            continue
+                        building_type, population = self._env._building_additionals_by_poly[id]
+                        if population <= 0:
+                            continue
+                        
+                        for entity in range(int(population)):
 
-                _person_trip = None
+                            #g_edge ="-306417543#3"
 
-                # (Intermodal) trip
-                _final_chain = None
-                _stages = None
-                _error_counter = 0
-                while not _person_trip and _error_counter < self._max_retry_number:
-                    try:
-                        self.logger.debug(
-                            ' ====================== _generate_trip ====================== ')
-                        _final_chain, _stages, _selected_mode = self._generate_trip(
-                            self._conf['taz'][m_slice['loc_origin']],
-                            self._conf['taz'][m_slice['loc_primary']],
-                            _chain, _modes)
+                            ## Select the activity chain
+                            _index = self._random_generator.choice(
+                                activity_index, p=activity_chains_weights)
+                            _chain, _modes = activity_chains[_index]
+                            self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
+                            self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
 
-                        ## Generating departure time
-                        _depart = numpy.round(_final_chain[1].start, decimals=2)
-                        if _depart < 0.0:
-                            _msg_error = 'Negative departure time generated: {}.'.format(_depart)
-                            _msg_error += ' Required fixing of the start time of the initial'
-                            _msg_error += ' activities. '
-                            # raise sagaexceptions.TripGenerationGenericError(_msg_error)
-                            _depart = 0.0
-                            _msg_error += ' Departure set to 0.0.'
-                            self.logger.critical(_msg_error)
+                            _person_trip = None
 
-                        if _depart not in self._all_trips[name].keys():
-                            self._all_trips[name][_depart] = []
+                            # (Intermodal) trip
+                            _final_chain = None
+                            _stages = None
+                            _error_counter = 0
+                            while not _person_trip and _error_counter < self._max_retry_number:
+                                try:
+                                    self.logger.debug(
+                                        ' ====================== _generate_trip ====================== ')
+                                    _final_chain, _stages, _selected_mode = self._generate_trip(
+                                        self._conf['taz'][m_slice['loc_origin']],
+                                        self._conf['taz'][m_slice['loc_primary']],
+                                        _chain, _modes, g_edge)
 
-                        _person_trip = {
-                            'id': '{}_{}'.format(name, entity_id),
-                            'depart': _depart,
-                            'stages': _stages,
-                        }
+                                    ## Generating departure time
+                                    _depart = numpy.round(_final_chain[1].start, decimals=2)
+                                    if _depart < 0.0:
+                                        _msg_error = 'Negative departure time generated: {}.'.format(_depart)
+                                        _msg_error += ' Required fixing of the start time of the initial'
+                                        _msg_error += ' activities. '
+                                        # raise sagaexceptions.TripGenerationGenericError(_msg_error)
+                                        _depart = 0.0
+                                        _msg_error += ' Departure set to 0.0.'
+                                        self.logger.critical(_msg_error)
 
-                        complete_trip = self._generate_sumo_trip_from_activitygen(_person_trip)
+                                    if _depart not in self._all_trips[name].keys():
+                                        self._all_trips[name][_depart] = []
 
-                        _person_trip['string'] = complete_trip
-                        ## For statistical purposes.
-                        _modes_stats[_selected_mode] += 1
-                        _chains_stats[self._hash_final_chain(_final_chain)] += 1
+                                    _person_trip = {
+                                        'id': '{}_{}'.format(name, entity_id),
+                                        'depart': _depart,
+                                        'stages': _stages,
+                                    }
 
-                    except sagaexceptions.TripGenerationGenericError:
-                        _person_trip = None
-                        _error_counter += 1
-                    finally:
-                        self.logger.debug(' ====================== DONE ====================== ')
+                                    complete_trip = self._generate_sumo_trip_from_activitygen(_person_trip)
 
-                if _person_trip:
-                    # Trip creation
-                    self._all_trips[name][_depart].append(_person_trip)
-                    with open(
-                        '{}.trips.dump.json'.format(self._conf['outputPrefix']), 'a') as openfile:
-                        json.dump(
-                            {
-                                'name': name,
-                                'depart': _depart,
-                                'personTrip': pformat(_person_trip),
-                            }, openfile, indent=2)
-                    self.logger.debug('Generated: %s', _person_trip['string'])
-                    total += 1
+                                    _person_trip['string'] = complete_trip
+                                    ## For statistical purposes.
+                                    _modes_stats[_selected_mode] += 1
+                                    _chains_stats[self._hash_final_chain(_final_chain)] += 1
 
-                else:
-                    self.logger.critical(
-                        '_generate_trip from %s to %s generated %d errors, '
-                        'trip generation aborted..',
-                        self._conf['taz'][m_slice['loc_origin']],
-                        self._conf['taz'][m_slice['loc_primary']],
-                        _error_counter)
+                                except sagaexceptions.TripGenerationGenericError:
+                                    _person_trip = None
+                                    _error_counter += 1
+                                finally:
+                                    self.logger.debug(' ====================== DONE ====================== ')
+
+                            if _person_trip:
+                                # Trip creation
+                                self._all_trips[name][_depart].append(_person_trip)
+                                with open(
+                                    '{}.trips.dump.json'.format(self._conf['outputPrefix']), 'a') as openfile:
+                                    json.dump(
+                                        {
+                                            'name': name,
+                                            'depart': _depart,
+                                            'personTrip': pformat(_person_trip),
+                                        }, openfile, indent=2)
+                                self.logger.debug('Generated: %s', _person_trip['string'])
+                                total += 1
+
+                            else:
+                                self.logger.critical(
+                                    '_generate_trip from %s to %s generated %d errors, '
+                                    'trip generation aborted..',
+                                    self._conf['taz'][m_slice['loc_origin']],
+                                    self._conf['taz'][m_slice['loc_primary']],
+                                    _error_counter)
+                            entity_id += 1
+                            pbar.update(1)
 
             if self._profiling:
                 _pr.disable()
@@ -358,7 +378,7 @@ class MobilityGenerator():
     ## ---- Functions for _compute_trips_per_slice:
     #                                       _generate_trip, _generate_intermodal_trip_traci ---- ##
 
-    def _generate_trip(self, from_area, to_area, activity_chain, modes):
+    def _generate_trip(self, from_area, to_area, activity_chain, modes, home_edge):
         """ Returns the trip for the given activity chain. """
 
         trip = None
@@ -395,7 +415,7 @@ class MobilityGenerator():
             while not _person_steps and _error_counter < self._max_retry_number:
                 try:
                     _person_steps, _person_stages = self._generate_intermodal_trip_traci(
-                        from_area, to_area, activity_chain, mode)
+                        from_area, to_area, activity_chain, mode, home_edge)
                 except sagaexceptions.TripGenerationGenericError:
                     _person_steps = None
                     _error_counter += 1
@@ -421,14 +441,14 @@ class MobilityGenerator():
                     activity_chain, _interpr_modes))
         return trip
 
-    def _generate_intermodal_trip_traci(self, from_area, to_area, activity_chain, mode):
+    def _generate_intermodal_trip_traci(self, from_area, to_area, activity_chain, mode, home_edge):
         """ Return the person trip for a given mode generated with TraCI """
 
         self.logger.debug(
             ' ====================== _generate_intermodal_trip_traci ====================== ')
 
         _person_stages = self._chains.generate_person_stages(
-            from_area, to_area, activity_chain, mode)
+            from_area, to_area, activity_chain, mode, home_edge)
 
         _person_steps = []
         _current_depart_time = None

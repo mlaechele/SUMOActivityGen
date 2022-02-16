@@ -155,9 +155,9 @@ class Environment():
                     header = row
                 else:
                     poly = row[0]
-                    is_home = row[1].lower() in ['true', 'yes', 'y', '1']
+                    building_type = row[1]
                     population = float(row[2])
-                    self._building_additionals_by_poly[poly] = (is_home, population)
+                    self._building_additionals_by_poly[poly] = (building_type, population)
 
     def _load_building_weights_from_csv(self, filename):
         """ Load the building weights from CSV file. """

@@ -106,7 +106,6 @@ class Activities():
                 self._env.sumo_network.getEdge(to_edge).getLength() > self._conf['minEdgeAllowed'])
             if self._env.valid_pair(from_edge, to_edge) and from_allowed and to_allowed:
                 try:
-                    self.logger.info('Search route.')
                     route = self._sumo.simulation.findIntermodalRoute(
                         from_edge, to_edge, modes=_mode, pType=_ptype, vType=_vtype)
                     if not sumoutils.is_valid_route(
@@ -252,7 +251,6 @@ class Activities():
 
         # Define a generic Home and Primary activity location.
         from_edge, to_edge = self._stages_define_main_locations(from_building, to_area, mode)
-        self.logger.info('main location defined')
         ## Generate preliminary stages for a person
         person_stages = dict()
         for pos, activity in enumerate(activity_chain):
@@ -285,9 +283,7 @@ class Activities():
                 "Invalid activity chain. (Minimal: H -> P-? -> H)", activity_chain)
 
         ## Define secondary activity location
-        self.logger.info('secondary location search')
         person_stages = self._stages_define_secondary_locations(person_stages, from_edge, to_edge)
-        self.logger.info('secondary location defined')
 
         ## Remove the initial 'Home' stage and update the from of the second stage.
         person_stages[1] = person_stages[1]._replace(fromEdge=person_stages[0].fromEdge)

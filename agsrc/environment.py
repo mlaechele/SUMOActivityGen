@@ -14,6 +14,7 @@ import csv
 import logging
 import os
 from pprint import pformat
+from shutil import ExecError
 import sys
 import xml.etree.ElementTree
 
@@ -372,6 +373,10 @@ class Environment():
         """ This is just to avoid a HUGE while condition.
             sumolib.net.edge.is_fringe()
         """
+
+        if not self.sumo_network.hasEdge(to_edge):
+            return False
+
         from_edge_sumo = self.sumo_network.getEdge(from_edge)
         to_edge_sumo = self.sumo_network.getEdge(to_edge)
 
@@ -447,14 +452,18 @@ class Environment():
         from_edge = from_building[2] # g_edge
         to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
 
+        if not self.valid_pair(from_edge, to_edge):
+            if to_edge.startswith('-'):
+                to_edge = to_edge[1:]
+            else:
+                to_edge = '-' + to_edge
+
         while not self.valid_pair(from_edge, to_edge) and to_buildings:
-            if not self.sumo_network.getEdge(to_edge).allows('pedestrian'):
-                to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
+            to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
 
         return from_edge, to_edge
 
     def _get_random_commercial_or_industrial_building_edge(self, pedestrian):
-        self.logger.info('_get_random_commercial_or_industrial_building_edge')
         rand_type = self._random_generator.randint(0, 2)
         g_edge = None
         p_edge = None

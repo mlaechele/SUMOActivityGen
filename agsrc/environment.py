@@ -117,7 +117,13 @@ class Environment():
                 continue
             if child.attrib['id'] not in self._conf['intermodalOptions']['parkingAreaBlacklist']:
                 edge = child.attrib['lane'].split('_')[0]
-                position = float(child.attrib['startPos']) + 2.5
+
+                if 'startPos' in child.attrib:
+                    position = float(child.attrib['startPos']) + 2.5
+                else:
+                    laneID = child.attrib['lane']
+                    lane = self.sumo_network.getLane(laneID)
+                    position = lane.getLength()
                 self._sumo_parkings[edge].append(child.attrib['id'])
                 self._parking_position[child.attrib['id']] = position
 

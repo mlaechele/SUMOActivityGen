@@ -124,7 +124,7 @@ class Activities():
             'Locations for the main activities not found between building {} and area {} using {}.'.format(
                 from_building[0], to_area, mode))
 
-    def _stages_define_secondary_locations(self, person_stages, home, primary):
+    def _stages_define_secondary_locations(self, person_stages, home, primary, is_secondary_hospital):
         """ Define secondary activity locations. """
         for pos, stage in person_stages.items():
             if  'S-' in stage.activity:
@@ -149,16 +149,20 @@ class Activities():
                     _pos += 1
 
                 destination = None
-                if _prec == 'H' and _succ == 'H':
-                    destination = self._random_location_circle(center=home, other=primary)
-                elif _prec == 'P' and _succ == 'P':
-                    destination = self._random_location_circle(center=primary, other=home)
-                elif _prec != _succ:
-                    destination = self._random_location_ellipse(home, primary)
-                else:
-                    raise sagaexceptions.TripGenerationActivityError(
-                        'Invalid sequence in the activity chain: {} --> {}'.format(_prec, _succ),
-                        person_stages)
+
+                if is_secondary_hospital:
+                    destination = '-30610463#5'
+                else: 
+                    if _prec == 'H' and _succ == 'H':
+                        destination = self._random_location_circle(center=home, other=primary)
+                    elif _prec == 'P' and _succ == 'P':
+                        destination = self._random_location_circle(center=primary, other=home)
+                    elif _prec != _succ:
+                        destination = self._random_location_ellipse(home, primary)
+                    else:
+                        raise sagaexceptions.TripGenerationActivityError(
+                            'Invalid sequence in the activity chain: {} --> {}'.format(_prec, _succ),
+                            person_stages)
 
                 person_stages[pos] = stage._replace(toEdge=destination)
         return person_stages
@@ -246,11 +250,13 @@ class Activities():
 
     # Chain
 
-    def generate_person_stages(self, from_building, to_area, activity_chain, mode):
+    def generate_person_stages(self, from_building, to_area, activity_chain, mode, is_secondary_hospital):
         """ Returns the trip for the given activity chain. """
 
         # Define a generic Home and Primary activity location.
         from_edge, to_edge = self._stages_define_main_locations(from_building, to_area, mode)
+        self.logger.info('From edge: ' + from_edge + '\n')
+        self.logger.info('To edge: ' + to_edge + '\n')
         ## Generate preliminary stages for a person
         person_stages = dict()
         for pos, activity in enumerate(activity_chain):
@@ -283,7 +289,7 @@ class Activities():
                 "Invalid activity chain. (Minimal: H -> P-? -> H)", activity_chain)
 
         ## Define secondary activity location
-        person_stages = self._stages_define_secondary_locations(person_stages, from_edge, to_edge)
+        person_stages = self._stages_define_secondary_locations(person_stages, from_edge, to_edge,is_secondary_hospital)
 
         ## Remove the initial 'Home' stage and update the from of the second stage.
         person_stages[1] = person_stages[1]._replace(fromEdge=person_stages[0].fromEdge)

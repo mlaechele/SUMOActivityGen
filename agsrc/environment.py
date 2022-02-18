@@ -376,6 +376,9 @@ class Environment():
 
         if not self.sumo_network.hasEdge(to_edge):
             return False
+        
+        if not self.sumo_network.hasEdge(from_edge):
+            return False
 
         from_edge_sumo = self.sumo_network.getEdge(from_edge)
         to_edge_sumo = self.sumo_network.getEdge(to_edge)
@@ -444,6 +447,15 @@ class Environment():
 
         return from_edge, to_edge
 
+    def _valid_from_edge(self,edge):
+        if not self.sumo_network.hasEdge(edge):
+            return False
+        from_edge_sumo = self.sumo_network.getEdge(edge)
+        if from_edge_sumo.is_fringe(from_edge_sumo.getOutgoing()):
+            return False
+        return True
+
+
     def _select_pair_from_taz_wbuildings(self, from_building, to_buildings, pedestrian):
         """ Randomly select one pair from a TAZ.
             Important: to_buildings MUST be passed by copy.
@@ -452,11 +464,25 @@ class Environment():
         from_edge = from_building[2] # g_edge
         to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
 
+        _select_new = False
+
+        while not self._valid_from_edge(from_edge):
+            if _select_new:
+                from_edge = self._get_random_residential_building_edge()
+                _select_new = False
+            else:
+                if from_edge.startswith('-'):
+                    from_edge = from_edge[1:]
+                else:
+                    from_edge = '-' + from_edge
+                _select_new = True
+
         if not self.valid_pair(from_edge, to_edge):
             if to_edge.startswith('-'):
                 to_edge = to_edge[1:]
             else:
                 to_edge = '-' + to_edge
+
 
         while not self.valid_pair(from_edge, to_edge) and to_buildings:
             to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
@@ -475,6 +501,12 @@ class Environment():
             _, _, g_edge, p_edge, _ = self._industrial_buildings[rand_building_idx]
         if pedestrian:
             return p_edge
+        return g_edge
+    
+    def _get_random_residential_building_edge(self):
+        g_edge = None
+        rand_building_idx = self._random_generator.randint(0, len(self._residential_buildings))
+        _, _, g_edge, _ , _ = self._residential_buildings[rand_building_idx]
         return g_edge
 
     @staticmethod

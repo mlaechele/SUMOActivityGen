@@ -12,6 +12,7 @@
 import argparse
 import collections
 import cProfile
+import random
 
 import io
 import json
@@ -29,6 +30,8 @@ from numpy.random import RandomState
 from tqdm import tqdm
 
 from agsrc import activities, environment, sagaexceptions, sumoutils
+
+total_hospital_visitors = 1000
 
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
@@ -256,8 +259,10 @@ class MobilityGenerator():
                 _pr.enable()
             
             total_population = self._env.get_total_population()
+            hospital_visitor_counter = int(total_population / total_hospital_visitors)
             with tqdm(total=total_population) as pbar:
                 entity_id = 1
+
                 buildings_by_taz = self._env.get_buildings_by_taz()
 
                 for taz in buildings_by_taz:
@@ -271,8 +276,14 @@ class MobilityGenerator():
                             continue
 
                         for _ in range(int(population)):
+                            is_secondary_hospital = False
+                            if entity_id % hospital_visitor_counter == 0:
+                                is_secondary_hospital = True
                             ## Select the activity chain
                             _index = self._random_generator.choice(activity_index, p=activity_chains_weights)
+                            
+                            if is_secondary_hospital:
+                                _index = random.randint(2, 9)
                             _chain, _modes = activity_chains[_index]
                             self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
                             self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
@@ -290,7 +301,7 @@ class MobilityGenerator():
                                     _final_chain, _stages, _selected_mode = self._generate_trip(
                                         building,
                                         self._conf['taz'][m_slice['loc_primary']],
-                                        _chain, _modes)
+                                        _chain, _modes, is_secondary_hospital)
 
                                     ## Generating departure time
                                     _depart = numpy.round(_final_chain[1].start, decimals=2)
@@ -343,7 +354,7 @@ class MobilityGenerator():
                                 self.logger.critical(
                                     '_generate_trip from building %s to area %s generated %d errors, '
                                     'trip generation aborted..',
-                                    building_id,
+                                    building[0],
                                     self._conf['taz'][m_slice['loc_primary']],
                                     _error_counter)
                             entity_id += 1
@@ -374,7 +385,7 @@ class MobilityGenerator():
 
     ## ---- Functions for _compute_trips_per_slice: _generate_trip, _generate_intermodal_trip_traci ---- ##
 
-    def _generate_trip(self, from_building, to_area, activity_chain, modes):
+    def _generate_trip(self, from_building, to_area, activity_chain, modes, is_secondary_hospital):
         """ Returns the trip for the given activity chain. """
 
         trip = None
@@ -411,7 +422,7 @@ class MobilityGenerator():
             while not _person_steps and _error_counter < self._max_retry_number:
                 try:
                     _person_steps, _person_stages = self._generate_intermodal_trip_traci(
-                        from_building, to_area, activity_chain, mode)
+                        from_building, to_area, activity_chain, mode, is_secondary_hospital)
                 except sagaexceptions.TripGenerationGenericError:
                     _person_steps = None
                     _error_counter += 1
@@ -437,14 +448,14 @@ class MobilityGenerator():
                     activity_chain, _interpr_modes))
         return trip
 
-    def _generate_intermodal_trip_traci(self, from_building, to_area, activity_chain, mode):
+    def _generate_intermodal_trip_traci(self, from_building, to_area, activity_chain, mode, is_secondary_hospital):
         """ Return the person trip for a given mode generated with TraCI """
 
         self.logger.debug(
             ' ====================== _generate_intermodal_trip_traci ====================== ')
 
         _person_stages = self._chains.generate_person_stages(
-            from_building, to_area, activity_chain, mode)
+            from_building, to_area, activity_chain, mode, is_secondary_hospital)
 
         _person_steps = []
         _current_depart_time = None
@@ -517,7 +528,16 @@ class MobilityGenerator():
                     modes=_mode, pType=_ptype, vType=_vtype)
                 if not sumoutils.is_valid_route(
                     mode, route, self._conf['intermodalOptions']['vehicleAllowedParking']):
-                    route = None
+
+                    route = traci.simulation.findIntermodalRoute(
+                        stage.fromEdge, stage.toEdge,
+                        arrivalPos=stage.arrivalPos,
+                        depart=_current_depart_time, walkFactor=.9,
+                        modes='walk', pType=_ptype, vType=_vtype)
+
+                    if not sumoutils.is_valid_route(
+                    'walk', route, self._conf['intermodalOptions']['vehicleAllowedParking']):
+                        route = None
                 if route and not isinstance(route, list):
                     # list in until SUMO 1.4.0 included, tuple onward
                     route = list(route)

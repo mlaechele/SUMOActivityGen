@@ -79,7 +79,7 @@ class Activities():
 
         return person_stages
 
-    def _stages_define_main_locations(self, from_area, to_area, mode):
+    def _stages_define_main_locations(self, from_building, to_area, mode):
         """ Define a generic Home and Primary activity location.
             The locations must be reachable in some ways.
         """
@@ -94,7 +94,7 @@ class Activities():
         while not route and _retry_counter < self._max_retry_number:
             _retry_counter += 1
             ## Origin and Destination Selection
-            from_edge, to_edge = self._env.select_pair(from_area, to_area)
+            from_edge, to_edge = self._env.select_pair(from_building, to_area)
             from_allowed = (
                 self._env.sumo_network.getEdge(from_edge).allows('pedestrian') and
                 self._env.sumo_network.getEdge(from_edge).allows('passenger') and
@@ -121,8 +121,8 @@ class Activities():
         if route:
             return from_edge, to_edge
         raise sagaexceptions.TripGenerationActivityError(
-            'Locations for the main activities not found between {} and {} using {}.'.format(
-                from_area, to_area, mode))
+            'Locations for the main activities not found between building {} and area {} using {}.'.format(
+                from_building[0], to_area, mode))
 
     def _stages_define_secondary_locations(self, person_stages, home, primary):
         """ Define secondary activity locations. """
@@ -246,14 +246,11 @@ class Activities():
 
     # Chain
 
-    def generate_person_stages(self, from_area, to_area, activity_chain, mode, home_edge):
+    def generate_person_stages(self, from_building, to_area, activity_chain, mode):
         """ Returns the trip for the given activity chain. """
 
         # Define a generic Home and Primary activity location.
-        from_edge, to_edge = self._stages_define_main_locations(from_area, to_area, mode)
-
-        from_edge = home_edge
-
+        from_edge, to_edge = self._stages_define_main_locations(from_building, to_area, mode)
         ## Generate preliminary stages for a person
         person_stages = dict()
         for pos, activity in enumerate(activity_chain):

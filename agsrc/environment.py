@@ -14,6 +14,7 @@ import csv
 import logging
 import os
 from pprint import pformat
+from shutil import ExecError
 import sys
 import xml.etree.ElementTree
 
@@ -53,16 +54,14 @@ class Environment():
         self.logger.info('Loading SUMO net file %s', conf['SUMOnetFile'])
         self.sumo_network = sumolib.net.readNet(conf['SUMOnetFile'])
 
-        self.logger.info('Loading SUMO parking lots from file %s',
-                     conf['SUMOadditionals']['parkings'])
+        self.logger.info('Loading SUMO parking lots from file %s', conf['SUMOadditionals']['parkings'])
         self._blacklisted_edges = set()
         self._sumo_parkings = collections.defaultdict(list)
         self._parking_cache = dict()
         self._parking_position = dict()
         self._load_parkings(conf['SUMOadditionals']['parkings'])
 
-        self.logger.info('Loading SUMO taxi stands from file %s',
-                     conf['intermodalOptions']['taxiStands'])
+        self.logger.info('Loading SUMO taxi stands from file %s', conf['intermodalOptions']['taxiStands'])
         self._sumo_taxi_stands = collections.defaultdict(list)
         self._taxi_stand_cache = dict()
         self._taxi_stand_position = dict()
@@ -74,15 +73,37 @@ class Environment():
 
         self.logger.info('Loading buildings weights from %s', conf['population']['buildingsWeight'])
         self._buildings_by_taz = dict()
-        self._building_additionals_by_poly = dict()
+        self._building_additionals_by_id = dict()
         self._load_buildings_from_csv_dir(conf['population']['buildingsWeight'])
 
         self.logger.info('Loading edges in each TAZ from %s', conf['population']['tazDefinition'])
         self._edges_by_taz = dict()
         self._load_edges_from_taz(conf['population']['tazDefinition'])
 
+        self.logger.info('Storing building ids categorized')
+        self._residential_buildings = []
+        self._commercial_buildings = []
+        self._industrial_buildings = []
+        self._store_buildings_categorized()
+
     def _get_all_files_from_dir(self, directory):
         return [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+
+    def _store_buildings_categorized(self):
+        for taz in self._buildings_by_taz:
+            for building in self._buildings_by_taz[taz]:
+                id = building[0]
+                if id not in self._building_additionals_by_id:
+                    continue
+                building_type, _ = self._building_additionals_by_id[id]
+                if building_type == 'residential':
+                    self._residential_buildings.append(building)
+                if building_type == 'commercial':
+                    self._commercial_buildings.append(building)
+                if building_type == 'industrial':
+                    self._industrial_buildings.append(building)
+        self.logger.info('Stored %d residential, %d commercial and %d industrial buildings', 
+            len(self._residential_buildings), len(self._commercial_buildings), len(self._industrial_buildings))
 
     # LOADERS
 
@@ -158,7 +179,7 @@ class Environment():
                     poly = row[0]
                     building_type = row[1]
                     population = float(row[2])
-                    self._building_additionals_by_poly[poly] = (building_type, population)
+                    self._building_additionals_by_id[poly] = (building_type, population)
 
     def _load_building_weights_from_csv(self, filename):
         """ Load the building weights from CSV file. """
@@ -259,130 +280,13 @@ class Environment():
         end = length - begin
         position = (end - begin) * self._random_generator.random_sample() + begin
         self.logger.debug('get_random_pos_from_edge: [%s] %f (%f)', edge, position, length)
-        if position < 0 or position > length:
-            position = 0
+        
+        # If the position is too close to the end, it may genrate error with findIntermodalRoute.
+        if position > length - 1.0:
+            position = length - 1.0
+        if position < 1.0:
+            position = 1.0
         return position
-
-    ## ---- PAIR SELECTION: origin - destination - mode ---- ##
-
-    def _select_pair(self, from_area, to_area, pedestrian=False):
-        """ Randomly select one pair, chosing between buildings and TAZ. """
-        from_taz = str(self._select_taz_from_weighted_area(from_area))
-        to_taz = str(self._select_taz_from_weighted_area(to_area))
-
-        if from_taz in self._buildings_by_taz.keys() and to_taz in self._buildings_by_taz.keys():
-            return self._select_pair_from_taz_wbuildings(
-                self._buildings_by_taz[from_taz][:], self._buildings_by_taz[to_taz][:], pedestrian)
-        return self._select_pair_from_taz(
-            self._edges_by_taz[from_taz][:], self._edges_by_taz[to_taz][:])
-
-    def _select_taz_from_weighted_area(self, area):
-        """ Select a TAZ from an area using its weight. """
-        selection = self._random_generator.uniform(0, 1)
-        total_weight = sum([self._taz_weights[taz]['weight'] for taz in area])
-        if total_weight <= 0:
-            error_msg = 'Error with area {}, total sum of weights is {}. '.format(
-                area, total_weight)
-            error_msg += 'It must be strictly positive.'
-            raise Exception(error_msg, [(taz, self._taz_weights[taz]['weight']) for taz in area])
-        cumulative = 0.0
-        for taz in area:
-            cumulative += self._taz_weights[taz]['weight'] / total_weight
-            if selection <= cumulative:
-                return taz
-        return None # this is matematically impossible,
-                    # if this happens, there is a mistake in the weights.
-
-    def _valid_pair(self, from_edge, to_edge):
-        """ This is just to avoid a HUGE while condition.
-            sumolib.net.edge.is_fringe()
-        """
-        from_edge_sumo = self.sumo_network.getEdge(from_edge)
-        to_edge_sumo = self.sumo_network.getEdge(to_edge)
-
-        if from_edge_sumo.is_fringe(from_edge_sumo.getOutgoing()):
-            return False
-        if to_edge_sumo.is_fringe(to_edge_sumo.getIncoming()):
-            return False
-        if from_edge == to_edge:
-            return False
-        if to_edge in self._blacklisted_edges:
-            return False
-        if not to_edge_sumo.allows('pedestrian'):
-            return False
-        return True
-
-    def _select_pair_from_taz(self, from_taz, to_taz):
-        """ Randomly select one pair from a TAZ.
-            Important: from_taz and to_taz MUST be passed by copy.
-            Note: sumonet.getEdge(from_edge).allows(v_type) does not support distributions.
-        """
-
-        from_edge = from_taz.pop(
-            self._random_generator.randint(0, len(from_taz)))
-        to_edge = to_taz.pop(
-            self._random_generator.randint(0, len(to_taz)))
-
-        _to = False
-        while not self._valid_pair(from_edge, to_edge) and from_taz and to_taz:
-            if not self.sumo_network.getEdge(to_edge).allows('pedestrian') or _to:
-                to_edge = to_taz.pop(
-                    self._random_generator.randint(0, len(to_taz)))
-                _to = False
-            else:
-                from_edge = from_taz.pop(
-                    self._random_generator.randint(0, len(from_taz)))
-                _to = True
-
-        return from_edge, to_edge
-
-    def _select_pair_from_taz_wbuildings(self, from_buildings, to_buildings, pedestrian):
-        """ Randomly select one pair from a TAZ.
-            Important: from_buildings and to_buildings MUST be passed by copy.
-            Note: sumonet.getEdge(from_edge).allows(v_type) does not support distributions.
-        """
-
-        from_edge, _index = self._get_weighted_edge(
-            from_buildings, self._random_generator.random_sample(), False)
-        del from_buildings[_index]
-        to_edge, _index = self._get_weighted_edge(
-            to_buildings, self._random_generator.random_sample(), pedestrian)
-        del to_buildings[_index]
-
-        _to = True
-        while not self._valid_pair(from_edge, to_edge) and from_buildings and to_buildings:
-            if not self.sumo_network.getEdge(to_edge).allows('pedestrian') or _to:
-                to_edge, _index = self._get_weighted_edge(
-                    to_buildings, self._random_generator.random_sample(), pedestrian)
-                del to_buildings[_index]
-                _to = False
-            else:
-                from_edge, _index = self._get_weighted_edge(
-                    from_buildings, self._random_generator.random_sample(), False)
-                del from_buildings[_index]
-                _to = True
-
-        return from_edge, to_edge
-
-    @staticmethod
-    def _get_weighted_edge(edges, double, pedestrian):
-        """ Return an edge and its position using the cumulative sum of the weigths in the area. """
-        pos = -1
-        ret = None
-        for cum_sum, g_edge, p_edge, _ in edges:
-            if ret and cum_sum > double:
-                return ret, pos
-            if pedestrian and p_edge:
-                ret = p_edge
-            elif not pedestrian and g_edge:
-                ret = g_edge
-            elif g_edge:
-                ret = g_edge
-            else:
-                ret = p_edge
-            pos += 1
-        return edges[-1][1], len(edges) - 1
-
 
     def get_stopping_lane(self, edge, vtypes=['passenger']):
         """
@@ -449,14 +353,19 @@ class Environment():
 
 ## ---- PAIR SELECTION: origin - destination - mode ---- ##
 
-    def select_pair(self, from_area, to_area, pedestrian=False):
+    def select_pair(self, from_building, to_area, pedestrian=False):
         """ Randomly select one pair, chosing between buildings and TAZ. """
-        from_taz = str(self._select_taz_from_weighted_area(from_area))
-        to_taz = str(self._select_taz_from_weighted_area(to_area))
 
+        # TODO: select tazes when not using single taz mode
+        # from_taz = str(self._select_taz_of_building_id(from_building[0]))
+        # to_taz = str(self._select_taz_from_weighted_area(to_area))
+
+        from_taz = 'all'
+        to_taz = 'all'
+        
         if from_taz in self._buildings_by_taz.keys() and to_taz in self._buildings_by_taz.keys():
             return self._select_pair_from_taz_wbuildings(
-                self._buildings_by_taz[from_taz][:], self._buildings_by_taz[to_taz][:], pedestrian)
+                from_building, self._buildings_by_taz[to_taz][:], pedestrian)
         return self._select_pair_from_taz(
             self._edges_by_taz[from_taz][:], self._edges_by_taz[to_taz][:])
 
@@ -464,6 +373,10 @@ class Environment():
         """ This is just to avoid a HUGE while condition.
             sumolib.net.edge.is_fringe()
         """
+
+        if not self.sumo_network.hasEdge(to_edge):
+            return False
+
         from_edge_sumo = self.sumo_network.getEdge(from_edge)
         to_edge_sumo = self.sumo_network.getEdge(to_edge)
 
@@ -478,6 +391,17 @@ class Environment():
         if not to_edge_sumo.allows('pedestrian'):
             return False
         return True
+
+    def _select_taz_of_building_id(self, id):
+        taz_of_building = None
+        for taz in self._buildings_by_taz:
+            for building_id, _, _, _, _ in self._buildings_by_taz[taz]:
+                if id == building_id:
+                    taz_of_building = taz
+                    break
+            if taz_of_building is not None:
+                break
+        return taz_of_building
 
     def _select_taz_from_weighted_area(self, area):
         """ Select a TAZ from an area using its weight. """
@@ -508,7 +432,7 @@ class Environment():
             self._random_generator.randint(0, len(to_taz)))
 
         _to = False
-        while not self._valid_pair(from_edge, to_edge) and from_taz and to_taz:
+        while not self.valid_pair(from_edge, to_edge) and from_taz and to_taz:
             if not self.sumo_network.getEdge(to_edge).allows('pedestrian') or _to:
                 to_edge = to_taz.pop(
                     self._random_generator.randint(0, len(to_taz)))
@@ -520,40 +444,45 @@ class Environment():
 
         return from_edge, to_edge
 
-    def _select_pair_from_taz_wbuildings(self, from_buildings, to_buildings, pedestrian):
+    def _select_pair_from_taz_wbuildings(self, from_building, to_buildings, pedestrian):
         """ Randomly select one pair from a TAZ.
-            Important: from_buildings and to_buildings MUST be passed by copy.
+            Important: to_buildings MUST be passed by copy.
             Note: sumonet.getEdge(from_edge).allows(v_type) does not support distributions.
         """
+        from_edge = from_building[2] # g_edge
+        to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
 
-        from_edge, _index = self._get_weighted_edge(
-            from_buildings, self._random_generator.random_sample(), False)
-        del from_buildings[_index]
-        to_edge, _index = self._get_weighted_edge(
-            to_buildings, self._random_generator.random_sample(), pedestrian)
-        del to_buildings[_index]
-
-        _to = True
-        while not self._valid_pair(from_edge, to_edge) and from_buildings and to_buildings:
-            if not self.sumo_network.getEdge(to_edge).allows('pedestrian') or _to:
-                to_edge, _index = self._get_weighted_edge(
-                    to_buildings, self._random_generator.random_sample(), pedestrian)
-                del to_buildings[_index]
-                _to = False
+        if not self.valid_pair(from_edge, to_edge):
+            if to_edge.startswith('-'):
+                to_edge = to_edge[1:]
             else:
-                from_edge, _index = self._get_weighted_edge(
-                    from_buildings, self._random_generator.random_sample(), False)
-                del from_buildings[_index]
-                _to = True
+                to_edge = '-' + to_edge
+
+        while not self.valid_pair(from_edge, to_edge) and to_buildings:
+            to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
 
         return from_edge, to_edge
+
+    def _get_random_commercial_or_industrial_building_edge(self, pedestrian):
+        rand_type = self._random_generator.randint(0, 2)
+        g_edge = None
+        p_edge = None
+        if rand_type == 0: # commercial buildings
+            rand_building_idx = self._random_generator.randint(0, len(self._commercial_buildings))
+            _, _, g_edge, p_edge, _ = self._commercial_buildings[rand_building_idx]
+        else: # industrial buildings
+            rand_building_idx = self._random_generator.randint(0, len(self._industrial_buildings))
+            _, _, g_edge, p_edge, _ = self._industrial_buildings[rand_building_idx]
+        if pedestrian:
+            return p_edge
+        return g_edge
 
     @staticmethod
     def _get_weighted_edge(edges, double, pedestrian):
         """ Return an edge and its position using the cumulative sum of the weigths in the area. """
         pos = -1
         ret = None
-        for id, cum_sum, g_edge, p_edge, _ in edges:
+        for _, cum_sum, g_edge, p_edge, _ in edges:
             if ret and cum_sum > double:
                 return ret, pos
             if pedestrian and p_edge:
@@ -566,3 +495,24 @@ class Environment():
                 ret = p_edge
             pos += 1
         return edges[-1][1], len(edges) - 1
+
+## ---- Helper functions ---- ##
+
+    def get_total_population(self):
+        population = 0
+        for buildings in self._buildings_by_taz.values():
+            for id, _, _, _, _ in buildings:
+                if id in self._building_additionals_by_id:
+                    population += self._building_additionals_by_id[id][1]
+        return population
+
+    def get_buildings_by_taz(self):
+        return self._buildings_by_taz
+
+    def get_population_by_building_id(self, id):
+        return self._building_additionals_by_id[id][1]
+
+    def has_additionals_for_building_id(self, id):
+        if id in self._building_additionals_by_id:
+            return True
+        return False 

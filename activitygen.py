@@ -132,8 +132,8 @@ class MobilityGenerator():
 
         self._all_trips = collections.defaultdict(dict)
 
-        self.logger.info('Computing the number of entities for each mobility slice..')
-        self._compute_entities_per_slice()
+        #self.logger.info('Computing the number of entities for each mobility slice..')
+        #self._compute_entities_per_slice()
 
     def generate(self):
         """ Generates and saves the mobility. """
@@ -218,6 +218,7 @@ class MobilityGenerator():
 
     ## ----                           Person trips generation                               ---- ##
 
+    '''
     def _compute_entities_per_slice(self):
         """
         Compute the absolute number of entities that are going to be created
@@ -229,6 +230,7 @@ class MobilityGenerator():
             self._conf['slices'][m_slice]['tot'] = int(
                 self._conf['population']['entities'] * self._conf['slices'][m_slice]['perc'])
             self.logger.info('\t %s: %d', m_slice, self._conf['slices'][m_slice]['tot'])
+    '''
 
     def _compute_trips_per_slice(self):
         """ Compute the trips for the synthetic population for each mobility slice. """
@@ -239,8 +241,7 @@ class MobilityGenerator():
         _chains_stats = collections.defaultdict(int)
 
         for name, m_slice in self._conf['slices'].items():
-            self.logger.info('[%s] Computing %d trips from %s to %s ... ',
-                         name, m_slice['tot'], m_slice['loc_origin'], m_slice['loc_primary'])
+            self.logger.info('[%s] Computing trips from %s to %s ... ', name, m_slice['loc_origin'], m_slice['loc_primary'])
 
             ## Activity chains preparation
             activity_chains = []
@@ -254,28 +255,24 @@ class MobilityGenerator():
                 _pr = cProfile.Profile()
                 _pr.enable()
             
-            max_population = 0 
-            for building_info in self._env._building_additionals_by_poly.values():
-                max_population += building_info[1]
-
-            with tqdm(total=max_population) as pbar:
+            total_population = self._env.get_total_population()
+            with tqdm(total=total_population) as pbar:
                 entity_id = 1
-                for taz_id in self._env._buildings_by_taz:
-                    taz_buildings = self._env._buildings_by_taz[taz_id]
-                    for id, cum_sum, g_edge, p_edge, weight in taz_buildings:
-                        if id not in self._env._building_additionals_by_poly:
+                buildings_by_taz = self._env.get_buildings_by_taz()
+
+                for taz in buildings_by_taz:
+                    taz_buildings = buildings_by_taz[taz]
+
+                    for building in taz_buildings:
+                        if not self._env.has_additionals_for_building_id(building[0]):
                             continue
-                        building_type, population = self._env._building_additionals_by_poly[id]
+                        population = self._env.get_population_by_building_id(building[0])
                         if population <= 0:
                             continue
-                        
-                        for entity in range(int(population)):
 
-                            #g_edge ="-306417543#3"
-
+                        for _ in range(int(population)):
                             ## Select the activity chain
-                            _index = self._random_generator.choice(
-                                activity_index, p=activity_chains_weights)
+                            _index = self._random_generator.choice(activity_index, p=activity_chains_weights)
                             _chain, _modes = activity_chains[_index]
                             self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
                             self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
@@ -291,9 +288,9 @@ class MobilityGenerator():
                                     self.logger.debug(
                                         ' ====================== _generate_trip ====================== ')
                                     _final_chain, _stages, _selected_mode = self._generate_trip(
-                                        self._conf['taz'][m_slice['loc_origin']],
+                                        building,
                                         self._conf['taz'][m_slice['loc_primary']],
-                                        _chain, _modes, g_edge)
+                                        _chain, _modes)
 
                                     ## Generating departure time
                                     _depart = numpy.round(_final_chain[1].start, decimals=2)
@@ -344,9 +341,9 @@ class MobilityGenerator():
 
                             else:
                                 self.logger.critical(
-                                    '_generate_trip from %s to %s generated %d errors, '
+                                    '_generate_trip from building %s to area %s generated %d errors, '
                                     'trip generation aborted..',
-                                    self._conf['taz'][m_slice['loc_origin']],
+                                    building_id,
                                     self._conf['taz'][m_slice['loc_primary']],
                                     _error_counter)
                             entity_id += 1
@@ -375,10 +372,9 @@ class MobilityGenerator():
             activity_list.append(chain[pos].activity)
         return pformat(activity_list)
 
-    ## ---- Functions for _compute_trips_per_slice:
-    #                                       _generate_trip, _generate_intermodal_trip_traci ---- ##
+    ## ---- Functions for _compute_trips_per_slice: _generate_trip, _generate_intermodal_trip_traci ---- ##
 
-    def _generate_trip(self, from_area, to_area, activity_chain, modes, home_edge):
+    def _generate_trip(self, from_building, to_area, activity_chain, modes):
         """ Returns the trip for the given activity chain. """
 
         trip = None
@@ -415,7 +411,7 @@ class MobilityGenerator():
             while not _person_steps and _error_counter < self._max_retry_number:
                 try:
                     _person_steps, _person_stages = self._generate_intermodal_trip_traci(
-                        from_area, to_area, activity_chain, mode, home_edge)
+                        from_building, to_area, activity_chain, mode)
                 except sagaexceptions.TripGenerationGenericError:
                     _person_steps = None
                     _error_counter += 1
@@ -426,9 +422,9 @@ class MobilityGenerator():
                                   _person_steps, _person_stages, mode))
             else:
                 self.logger.critical(
-                    '_generate_intermodal_trip_traci from "%s" to "%s" with "%s" '
+                    '_generate_intermodal_trip_traci from building "%s" to area "%s" with "%s" '
                     'generated %d errors, trip generation aborted..',
-                    from_area, to_area, mode, _error_counter)
+                    from_building[0], to_area, mode, _error_counter)
 
         ## Compose the final person trip.
         if solutions:
@@ -441,14 +437,14 @@ class MobilityGenerator():
                     activity_chain, _interpr_modes))
         return trip
 
-    def _generate_intermodal_trip_traci(self, from_area, to_area, activity_chain, mode, home_edge):
+    def _generate_intermodal_trip_traci(self, from_building, to_area, activity_chain, mode):
         """ Return the person trip for a given mode generated with TraCI """
 
         self.logger.debug(
             ' ====================== _generate_intermodal_trip_traci ====================== ')
 
         _person_stages = self._chains.generate_person_stages(
-            from_area, to_area, activity_chain, mode, home_edge)
+            from_building, to_area, activity_chain, mode)
 
         _person_steps = []
         _current_depart_time = None

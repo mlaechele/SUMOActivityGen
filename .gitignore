@@ -5,7 +5,9 @@ misc
 test/*
 example/*
 
-#Other
+# Other
+.vscode/
+.idea/
 .DS_Store
 *.xmind
 

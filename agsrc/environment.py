@@ -74,11 +74,15 @@ class Environment():
 
         self.logger.info('Loading buildings weights from %s', conf['population']['buildingsWeight'])
         self._buildings_by_taz = dict()
-        self._load_buildings_weight_from_csv_dir(conf['population']['buildingsWeight'])
+        self._building_additionals_by_poly = dict()
+        self._load_buildings_from_csv_dir(conf['population']['buildingsWeight'])
 
         self.logger.info('Loading edges in each TAZ from %s', conf['population']['tazDefinition'])
         self._edges_by_taz = dict()
         self._load_edges_from_taz(conf['population']['tazDefinition'])
+
+    def _get_all_files_from_dir(self, directory):
+        return [os.path.join(directory, f) for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
 
     # LOADERS
 
@@ -129,39 +133,61 @@ class Environment():
                         'weight': (int(row[2])/float(row[3])),
                     }
 
-    def _load_buildings_weight_from_csv_dir(self, directory):
-        """ Load the buildings weight from multiple CSV files. """
-
-        allfiles = [os.path.join(directory, f)
-                    for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+    def _load_buildings_from_csv_dir(self, directory):
+        """ Load the buildings data from multiple CSV files. """
+        allfiles = self._get_all_files_from_dir(directory)
         for filename in sorted(allfiles):
-            self.logger.debug('Loding %s', filename)
-            with open(filename, 'r') as csvfile:
-                weightreader = csv.reader(csvfile)
-                header = None
-                taz = None
-                buildings = []
-                for row in weightreader:
-                    if not row:
-                        continue # empty line
-                    if header is None:
-                        header = row
-                    else:
-                        taz = row[0]
-                        buildings.append((float(row[3]),    # weight
-                                          row[4],           # generic edge
-                                          row[5]))          # pedestrian edge
+            if filename.endswith('.csv'):
+                self.logger.debug('Loading %s', filename)
+                if filename.endswith('.add.csv'):
+                    self._load_building_additionals_from_csv(filename)
+                else:
+                    self._load_building_weights_from_csv(filename)
 
-                if len(buildings) < 10:
-                    self.logger.debug('Dropping %s, only %d buildings found.', filename, len(buildings))
-                    continue
+    def _load_building_additionals_from_csv(self, filename):
+        """ Load the building additionals from CSV file. """
+        with open(filename, 'r') as csvfile:
+            reader = csv.reader(csvfile)
+            header = None
+            for row in reader:
+                if not row:
+                    continue # empty line
+                if header is None:
+                    header = row
+                else:
+                    poly = row[0]
+                    building_type = row[1]
+                    population = float(row[2])
+                    self._building_additionals_by_poly[poly] = (building_type, population)
 
-                weighted_buildings = []
-                cum_sum = 0.0
-                for weight, g_edge, p_edge in sorted(buildings):
-                    cum_sum += weight
-                    weighted_buildings.append((cum_sum, g_edge, p_edge, weight))
-                self._buildings_by_taz[taz] = weighted_buildings
+    def _load_building_weights_from_csv(self, filename):
+        """ Load the building weights from CSV file. """
+        with open(filename, 'r') as csvfile:
+            weightreader = csv.reader(csvfile)
+            header = None
+            taz = None
+            buildings = []
+            for row in weightreader:
+                if not row:
+                    continue # empty line
+                if header is None:
+                    header = row
+                else:
+                    taz = row[0]
+                    buildings.append((row[1],float(row[3]),    # weight
+                                        row[4],           # generic edge
+                                        row[5]))          # pedestrian edge
+
+            if len(buildings) < 10:
+                self.logger.debug('Dropping %s, only %d buildings found.', filename, len(buildings))
+                return
+
+            weighted_buildings = []
+            cum_sum = 0.0
+            for id, weight, g_edge, p_edge in sorted(buildings):
+                cum_sum += weight
+                weighted_buildings.append((id, cum_sum, g_edge, p_edge, weight))
+            self._buildings_by_taz[taz] = weighted_buildings
 
     def _load_edges_from_taz(self, filename):
         """ Load edges from the TAZ file. """
@@ -233,6 +259,8 @@ class Environment():
         end = length - begin
         position = (end - begin) * self._random_generator.random_sample() + begin
         self.logger.debug('get_random_pos_from_edge: [%s] %f (%f)', edge, position, length)
+        if position < 0 or position > length:
+            position = 0
         return position
 
     ## ---- PAIR SELECTION: origin - destination - mode ---- ##
@@ -525,7 +553,7 @@ class Environment():
         """ Return an edge and its position using the cumulative sum of the weigths in the area. """
         pos = -1
         ret = None
-        for cum_sum, g_edge, p_edge, _ in edges:
+        for id, cum_sum, g_edge, p_edge, _ in edges:
             if ret and cum_sum > double:
                 return ret, pos
             if pedestrian and p_edge:

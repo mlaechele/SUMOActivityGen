@@ -137,11 +137,12 @@ class Environment():
         """ Load the buildings data from multiple CSV files. """
         allfiles = self._get_all_files_from_dir(directory)
         for filename in sorted(allfiles):
-            self.logger.debug('Loading %s', filename)
-            if filename.endswith('.add.csv'):
-                self._load_building_additionals_from_csv(filename)
-            else:
-                self._load_building_weights_from_csv(filename)
+            if filename.endswith('.csv'):
+                self.logger.debug('Loading %s', filename)
+                if filename.endswith('.add.csv'):
+                    self._load_building_additionals_from_csv(filename)
+                else:
+                    self._load_building_weights_from_csv(filename)
 
     def _load_building_additionals_from_csv(self, filename):
         """ Load the building additionals from CSV file. """
@@ -173,7 +174,7 @@ class Environment():
                     header = row
                 else:
                     taz = row[0]
-                    buildings.append((float(row[3]),    # weight
+                    buildings.append((row[1],float(row[3]),    # weight
                                         row[4],           # generic edge
                                         row[5]))          # pedestrian edge
 
@@ -183,9 +184,9 @@ class Environment():
 
             weighted_buildings = []
             cum_sum = 0.0
-            for weight, g_edge, p_edge in sorted(buildings):
+            for id, weight, g_edge, p_edge in sorted(buildings):
                 cum_sum += weight
-                weighted_buildings.append((cum_sum, g_edge, p_edge, weight))
+                weighted_buildings.append((id, cum_sum, g_edge, p_edge, weight))
             self._buildings_by_taz[taz] = weighted_buildings
 
     def _load_edges_from_taz(self, filename):
@@ -258,6 +259,8 @@ class Environment():
         end = length - begin
         position = (end - begin) * self._random_generator.random_sample() + begin
         self.logger.debug('get_random_pos_from_edge: [%s] %f (%f)', edge, position, length)
+        if position < 0 or position > length:
+            position = 0
         return position
 
     ## ---- PAIR SELECTION: origin - destination - mode ---- ##
@@ -550,7 +553,7 @@ class Environment():
         """ Return an edge and its position using the cumulative sum of the weigths in the area. """
         pos = -1
         ret = None
-        for cum_sum, g_edge, p_edge, _ in edges:
+        for id, cum_sum, g_edge, p_edge, _ in edges:
             if ret and cum_sum > double:
                 return ret, pos
             if pedestrian and p_edge:

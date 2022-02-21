@@ -246,11 +246,13 @@ class Activities():
 
     # Chain
 
-    def generate_person_stages(self, from_area, to_area, activity_chain, mode):
+    def generate_person_stages(self, from_area, to_area, activity_chain, mode, home_edge):
         """ Returns the trip for the given activity chain. """
 
         # Define a generic Home and Primary activity location.
         from_edge, to_edge = self._stages_define_main_locations(from_area, to_area, mode)
+
+        from_edge = home_edge
 
         ## Generate preliminary stages for a person
         person_stages = dict()

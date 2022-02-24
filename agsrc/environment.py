@@ -85,9 +85,21 @@ class Environment():
         self._load_edges_from_taz(conf['population']['tazDefinition'])
 
         self.logger.info('Storing building ids categorized')
-        self._residential_buildings = []
-        self._commercial_buildings = []
-        self._industrial_buildings = []
+        self._buildings = {
+            'residential': [],
+            'commercial': [],
+            'industrial': [],
+            'downtown': [],
+            'main-hospital': [],
+            'hospital': [],
+        }
+        self._primary_buildings_counter = {
+            'commercial': 0,
+            'industrial': 0,
+            'downtown': 0,
+            'main-hospital': 0,
+            'hospital': 0,
+        }
         self._store_buildings_categorized()
 
     def _get_all_files_from_dir(self, directory):
@@ -99,15 +111,28 @@ class Environment():
                 id = building[0]
                 if id not in self._building_additionals_by_id:
                     continue
-                building_type, _ = self._building_additionals_by_id[id]
-                if building_type == 'residential':
-                    self._residential_buildings.append(building)
+                building_type, building_population = self._building_additionals_by_id[id]
+                if building_population > 0:
+                    self._buildings['residential'].append(building)
                 if building_type == 'commercial':
-                    self._commercial_buildings.append(building)
+                    self._buildings['commercial'].append(building)
                 if building_type == 'industrial':
-                    self._industrial_buildings.append(building)
-        self.logger.info('Stored %d residential, %d commercial and %d industrial buildings', 
-            len(self._residential_buildings), len(self._commercial_buildings), len(self._industrial_buildings))
+                    self._buildings['industrial'].append(building)
+                if building_type == 'downtown':
+                    self._buildings['downtown'].append(building)
+                if building_type == 'main-hospital':
+                    self._buildings['main-hospital'].append(building)
+                if building_type == 'hospital':
+                    self._buildings['hospital'].append(building)
+        self.logger.info(
+            'Stored %d residential, %d commercial, %d industrial, %d downtown, %d hospital, and %d main-hospital buildings', 
+            len(self._buildings['residential']),
+            len(self._buildings['commercial']),
+            len(self._buildings['industrial']),
+            len(self._buildings['downtown']),
+            len(self._buildings['main-hospital']),
+            len(self._buildings['hospital'])
+        )
 
     # From sumolib _initRTree
     def _init_rtree(self, shape_list, include_junctions=True):
@@ -538,7 +563,7 @@ class Environment():
             Note: sumonet.getEdge(from_edge).allows(v_type) does not support distributions.
         """
         from_edge = from_building[2] # g_edge
-        to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
+        to_edge = self._get_random_primary_building_edge(pedestrian)
 
         _select_new = False
 
@@ -561,28 +586,40 @@ class Environment():
 
 
         while not self.valid_pair(from_edge, to_edge) and to_buildings:
-            to_edge = self._get_random_commercial_or_industrial_building_edge(pedestrian)
+            to_edge = self._get_random_primary_building_edge(pedestrian)
 
         return from_edge, to_edge
 
-    def _get_random_commercial_or_industrial_building_edge(self, pedestrian):
-        rand_type = self._random_generator.randint(0, 2)
+    def _get_random_primary_building_edge(self, pedestrian):
+        rand_type = self._random_generator.randint(0, 100)
         g_edge = None
         p_edge = None
-        if rand_type == 0: # commercial buildings
-            rand_building_idx = self._random_generator.randint(0, len(self._commercial_buildings))
-            _, _, g_edge, p_edge, _ = self._commercial_buildings[rand_building_idx]
-        else: # industrial buildings
-            rand_building_idx = self._random_generator.randint(0, len(self._industrial_buildings))
-            _, _, g_edge, p_edge, _ = self._industrial_buildings[rand_building_idx]
+
+        if rand_type in range(0,5): # main hospital buildings
+            g_edge, p_edge = self._get_random_building_edges('main-hospital')
+        elif rand_type in range(5,10): # hospital buildings
+            g_edge, p_edge = self._get_random_building_edges('hospital')
+        elif rand_type in range(10,40): # commercial buildings
+            g_edge, p_edge = self._get_random_building_edges('commercial')
+        elif rand_type in range(40,70): # industrial buildings
+            g_edge, p_edge = self._get_random_building_edges('industrial')
+        else: # downtown buildings
+            g_edge, p_edge = self._get_random_building_edges('downtown')
+
         if pedestrian:
             return p_edge
         return g_edge
     
+    def _get_random_building_edges(self, building_type):
+        self._primary_buildings_counter[building_type] += 1
+        rand_building_idx = self._random_generator.randint(0, len(self._buildings[building_type]))
+        _, _, g_edge, p_edge, _ = self._buildings[building_type][rand_building_idx]
+        return g_edge, p_edge
+
     def _get_random_residential_building_edge(self):
         g_edge = None
-        rand_building_idx = self._random_generator.randint(0, len(self._residential_buildings))
-        _, _, g_edge, _ , _ = self._residential_buildings[rand_building_idx]
+        rand_building_idx = self._random_generator.randint(0, len(self._buildings['residential']))
+        _, _, g_edge, _ , _ = self._buildings['residential'][rand_building_idx]
         return g_edge
 
     @staticmethod
@@ -624,3 +661,6 @@ class Environment():
         if id in self._building_additionals_by_id:
             return True
         return False 
+
+    def get_primary_buildings_counter(self):
+        return self._primary_buildings_counter

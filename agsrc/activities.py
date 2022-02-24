@@ -255,8 +255,8 @@ class Activities():
 
         # Define a generic Home and Primary activity location.
         from_edge, to_edge = self._stages_define_main_locations(from_building, to_area, mode)
-        self.logger.info('From edge: ' + from_edge + '\n')
-        self.logger.info('To edge: ' + to_edge + '\n')
+        self.logger.info('From edge: ' + from_edge + ' to edge ' + to_edge)
+
         ## Generate preliminary stages for a person
         person_stages = dict()
         for pos, activity in enumerate(activity_chain):

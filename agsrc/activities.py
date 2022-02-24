@@ -289,7 +289,7 @@ class Activities():
                 "Invalid activity chain. (Minimal: H -> P-? -> H)", activity_chain)
 
         ## Define secondary activity location
-        person_stages = self._stages_define_secondary_locations(person_stages, from_edge, to_edge,is_secondary_hospital)
+        person_stages = self._stages_define_secondary_locations(person_stages, from_edge, to_edge, is_secondary_hospital)
 
         ## Remove the initial 'Home' stage and update the from of the second stage.
         person_stages[1] = person_stages[1]._replace(fromEdge=person_stages[0].fromEdge)

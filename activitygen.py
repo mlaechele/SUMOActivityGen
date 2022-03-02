@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import os
+import pickle
 from pprint import pformat
 import pstats
 import sys
@@ -154,6 +155,8 @@ class MobilityGenerator():
     def _save_mobility(self):
         """ Save the generated trips to files. """
         self.logger.info('Saving trips files..')
+        with open('{}.trips.dump.pkl'.format(self._conf['outputPrefix']), 'wb') as f:
+            pickle.dump(self._all_trips, f)
         if self._conf['mergeRoutesFiles']:
             self._saving_trips_to_single_file()
         else:

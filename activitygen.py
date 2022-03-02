@@ -283,7 +283,7 @@ class MobilityGenerator():
                             _index = self._random_generator.choice(activity_index, p=activity_chains_weights)
                             
                             if is_secondary_hospital:
-                                _index = random.randint(2, 9)
+                                _index = self._random_generator.randint(2, len(activity_chains))
                             _chain, _modes = activity_chains[_index]
                             self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
                             self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
@@ -298,7 +298,7 @@ class MobilityGenerator():
                                 try:
                                     self.logger.debug(
                                         ' ====================== _generate_trip ====================== ')
-                                    _final_chain, _stages, _selected_mode = self._generate_trip(
+                                    _final_chain, _stages, _selected_mode, building_type = self._generate_trip(
                                         building,
                                         self._conf['taz'][m_slice['loc_primary']],
                                         _chain, _modes, is_secondary_hospital)
@@ -349,6 +349,15 @@ class MobilityGenerator():
                                         }, openfile, indent=2)
                                 self.logger.debug('Generated: %s', _person_trip['string'])
                                 total += 1
+                                if building_type:
+                                    self._env._primary_buildings_counter[building_type] += 1
+                                for stage in _person_trip['stages']:
+                                    if stage.description.startswith('P'):
+                                        lane = stage.edges.split('_')
+                                        edge = lane[0]
+                                        if edge in ['-30610463#1','-30610463#3','157539099#0']:
+                                            self._env._primary_buildings_counter['real-hospital'] += 1
+                                        break
 
                             else:
                                 self.logger.critical(
@@ -368,7 +377,7 @@ class MobilityGenerator():
                 print(_s.getvalue())
                 input("Press any key to continue..")
 
-        self.logger.info('Generated %d trips.', total)
+        self.logger.info('we %d trips.', total)
         self.logger.info('Primary activity buildings:')
         for building_type, counter in self._env.get_primary_buildings_counter().items():
             self.logger.info('\t %s: %d', building_type, counter)
@@ -424,7 +433,7 @@ class MobilityGenerator():
             _error_counter = 0
             while not _person_steps and _error_counter < self._max_retry_number:
                 try:
-                    _person_steps, _person_stages = self._generate_intermodal_trip_traci(
+                    _person_steps, _person_stages, building_type, mode = self._generate_intermodal_trip_traci(
                         from_building, to_area, activity_chain, mode, is_secondary_hospital)
                 except sagaexceptions.TripGenerationGenericError:
                     _person_steps = None
@@ -444,7 +453,7 @@ class MobilityGenerator():
         if solutions:
             ## For the moment, the best solution is the one with minor cost.
             best = sorted(solutions)[0] ## Ascending.
-            trip = (best[2], best[1], best[3]) ## _person_stages, _person_steps, mode
+            trip = (best[2], best[1], best[3], building_type) ## _person_stages, _person_steps, mode
         else:
             raise sagaexceptions.TripGenerationRouteError(
                 'No solution foud for chain {} and modes {}.'.format(
@@ -457,7 +466,7 @@ class MobilityGenerator():
         self.logger.debug(
             ' ====================== _generate_intermodal_trip_traci ====================== ')
 
-        _person_stages = self._chains.generate_person_stages(
+        _person_stages, building_type, mode = self._chains.generate_person_stages(
             from_building, to_area, activity_chain, mode, is_secondary_hospital)
 
         _person_steps = []
@@ -501,7 +510,27 @@ class MobilityGenerator():
                         route[-1].arrivalPos = self._env.get_parking_position(p_id)
                         route.extend(_last_mile)
                     else:
-                        route = None
+                        
+                        alternativ_p_id = '1' + p_id
+
+                        if alternativ_p_id in self._env._edges_by_parking_id:
+
+                            route = traci.simulation.findIntermodalRoute(
+                                stage.fromEdge, p_edge,
+                                depart=_current_depart_time, walkFactor=.9,
+                                modes=_mode, pType=_ptype, vType=_vtype)
+                            if route and not isinstance(route, list):
+                                # list in until SUMO 1.4.0 included, tuple onward
+                                route = list(route)
+                            if (sumoutils.is_valid_route(mode, route,self._conf['intermodalOptions']['vehicleAllowedParking']) and route[-1].type == tc.STAGE_DRIVING):
+                                route[-1].destStop = p_id
+                                route[-1].arrivalPos = self._env.get_parking_position(p_id)
+                                route.extend(_last_mile)
+                            else:
+                                route = None
+                        else:
+                            route = None
+                            
                 if route:
                     ## build the waiting to destination (if required)
                     if stage.duration:
@@ -634,7 +663,7 @@ class MobilityGenerator():
                 _person_steps.append(step)
 
             self.logger.debug('====================== Stage done. ======================')
-        return _person_steps, _person_stages
+        return _person_steps, _person_stages, building_type, mode
 
     def _generate_waiting_stage(self, stage):
         """ Builds a STAGE_WAITING type of stage compatible with findIntermodalRoute. """

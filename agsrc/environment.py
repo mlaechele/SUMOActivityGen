@@ -57,13 +57,14 @@ class Environment():
         self.logger.info('Loading SUMO parking lots from file %s', conf['SUMOadditionals']['parkings'])
         self._blacklisted_edges = set()
         self._sumo_parkings = collections.defaultdict(list)
+        self._edges_by_parking_id = dict()
         self._parking_edges = list()
         self._rtree_parking_edges = None
         self._parkings_by_edge_id = dict()
         self._parking_cache = dict()
         self._parking_position = dict()
         self._load_parkings(conf['SUMOadditionals']['parkings'])
-        self._map_parkings_to_net_edges(max_search_radius=2200)
+        self._map_parkings_to_net_edges(max_search_radius=3200)
 
         self.logger.info('Loading SUMO taxi stands from file %s', conf['intermodalOptions']['taxiStands'])
         self._sumo_taxi_stands = collections.defaultdict(list)
@@ -98,6 +99,7 @@ class Environment():
             'industrial': 0,
             'downtown': 0,
             'main-hospital': 0,
+            'real-hospital': 0,
             'hospital': 0,
         }
         self._store_buildings_categorized()
@@ -195,6 +197,7 @@ class Environment():
                     sumo_edge = self.sumo_network.getEdge(edge)
                     self._parking_edges.append(sumo_edge)
                     self._sumo_parkings[edge].append(child.attrib['id'])
+                    self._edges_by_parking_id[child.attrib['id']] = edge
                     self._parking_position[child.attrib['id']] = position
         self.logger.info('Loading parking areas have total capacity of %s', str(total_roadside_capacity))
 
@@ -546,7 +549,7 @@ class Environment():
                     self._random_generator.randint(0, len(from_taz)))
                 _to = True
 
-        return from_edge, to_edge
+        return from_edge, to_edge, None
 
     def _valid_from_edge(self,edge):
         if not self.sumo_network.hasEdge(edge):
@@ -563,7 +566,7 @@ class Environment():
             Note: sumonet.getEdge(from_edge).allows(v_type) does not support distributions.
         """
         from_edge = from_building[2] # g_edge
-        to_edge = self._get_random_primary_building_edge(pedestrian)
+        to_edge, building_type = self._get_random_primary_building_edge(pedestrian)
 
         _select_new = False
 
@@ -586,35 +589,35 @@ class Environment():
 
 
         while not self.valid_pair(from_edge, to_edge) and to_buildings:
-            to_edge = self._get_random_primary_building_edge(pedestrian)
+            to_edge, building_type = self._get_random_primary_building_edge(pedestrian)
 
-        return from_edge, to_edge
+        return from_edge, to_edge, building_type
 
     def _get_random_primary_building_edge(self, pedestrian):
         rand_type = self._random_generator.randint(0, 100)
         g_edge = None
         p_edge = None
+        building_type = None
 
         if rand_type in range(0,5): # main hospital buildings
-            g_edge, p_edge = self._get_random_building_edges('main-hospital')
+            g_edge, p_edge, building_type = self._get_random_building_edges('main-hospital')
         elif rand_type in range(5,10): # hospital buildings
-            g_edge, p_edge = self._get_random_building_edges('hospital')
+            g_edge, p_edge, building_type = self._get_random_building_edges('hospital')
         elif rand_type in range(10,40): # commercial buildings
-            g_edge, p_edge = self._get_random_building_edges('commercial')
+            g_edge, p_edge, building_type = self._get_random_building_edges('commercial')
         elif rand_type in range(40,70): # industrial buildings
-            g_edge, p_edge = self._get_random_building_edges('industrial')
+            g_edge, p_edge, building_type = self._get_random_building_edges('industrial')
         else: # downtown buildings
-            g_edge, p_edge = self._get_random_building_edges('downtown')
+            g_edge, p_edge, building_type = self._get_random_building_edges('downtown')
 
         if pedestrian:
-            return p_edge
-        return g_edge
+            return p_edge, building_type
+        return g_edge, building_type
     
     def _get_random_building_edges(self, building_type):
-        self._primary_buildings_counter[building_type] += 1
         rand_building_idx = self._random_generator.randint(0, len(self._buildings[building_type]))
         _, _, g_edge, p_edge, _ = self._buildings[building_type][rand_building_idx]
-        return g_edge, p_edge
+        return g_edge, p_edge, building_type
 
     def _get_random_residential_building_edge(self):
         g_edge = None

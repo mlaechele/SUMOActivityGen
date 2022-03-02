@@ -370,7 +370,7 @@ class MobilityGenerator():
 
         self.logger.info('Generated %d trips.', total)
         self.logger.info('Primary activity buildings:')
-        for building_type, counter in self._env.get_primary_buildings_counter.items():
+        for building_type, counter in self._env.get_primary_buildings_counter().items():
             self.logger.info('\t %s: %d', building_type, counter)
         self.logger.info('Mode splits:')
         for mode, value in _modes_stats.items():

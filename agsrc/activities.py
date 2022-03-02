@@ -79,7 +79,7 @@ class Activities():
 
         return person_stages
 
-    def _stages_define_main_locations(self, from_building, to_area, mode):
+    def _stages_define_main_locations(self, from_building, to_area, mode, is_secondary_hospital):
         """ Define a generic Home and Primary activity location.
             The locations must be reachable in some ways.
         """
@@ -90,11 +90,24 @@ class Activities():
         route = None
         from_edge = None
         to_edge = None
+        building_type = None
         _retry_counter = 0
         while not route and _retry_counter < self._max_retry_number:
             _retry_counter += 1
             ## Origin and Destination Selection
-            from_edge, to_edge = self._env.select_pair(from_building, to_area)
+            from_edge, to_edge, building_type = self._env.select_pair(from_building, to_area)
+
+            if to_edge in ['-30610463#1','-30610463#3','157539099#0']:
+                test = 1
+
+            if is_secondary_hospital:
+                tset = 2
+
+            if (to_edge in ['-30610463#1','-30610463#3','157539099#0'] and mode != 'passenger') or is_secondary_hospital:
+                mode = 'passenger'
+                _mode, _ptype, _vtype = sumoutils.get_intermodal_mode_parameters(
+                    mode, self._conf['intermodalOptions']['vehicleAllowedParking'])
+
             from_allowed = (
                 self._env.sumo_network.getEdge(from_edge).allows('pedestrian') and
                 self._env.sumo_network.getEdge(from_edge).allows('passenger') and
@@ -119,7 +132,7 @@ class Activities():
             else:
                 self.logger.debug('_stages_define_main_locations: unusable pair of edges.')
         if route:
-            return from_edge, to_edge
+            return from_edge, to_edge, mode, building_type
         raise sagaexceptions.TripGenerationActivityError(
             'Locations for the main activities not found between building {} and area {} using {}.'.format(
                 from_building[0], to_area, mode))
@@ -254,7 +267,7 @@ class Activities():
         """ Returns the trip for the given activity chain. """
 
         # Define a generic Home and Primary activity location.
-        from_edge, to_edge = self._stages_define_main_locations(from_building, to_area, mode)
+        from_edge, to_edge, mode, building_type = self._stages_define_main_locations(from_building, to_area, mode, is_secondary_hospital)
         self.logger.info('From edge: ' + from_edge + ' to edge ' + to_edge)
 
         ## Generate preliminary stages for a person
@@ -328,7 +341,7 @@ class Activities():
             pos += 1
         person_stages[pos-1] = person_stages[pos-1]._replace(final=True)
 
-        return person_stages
+        return person_stages, building_type, mode
 
     def _stages_compute_start_time(self, person_stages, mode):
         """ Compute the real starting time for the activity chain. """
@@ -344,7 +357,10 @@ class Activities():
                 break
             pos += 1
 
-        start = person_stages[pos].start
+        if pos > len(person_stages):
+            start = float(self._random_generator.randint(28800,64801))
+        else:
+            start = person_stages[pos].start
         while pos in person_stages:
             ett, route = None, None
             try:

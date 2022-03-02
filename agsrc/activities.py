@@ -97,12 +97,6 @@ class Activities():
             ## Origin and Destination Selection
             from_edge, to_edge, building_type = self._env.select_pair(from_building, to_area)
 
-            if to_edge in ['-30610463#1','-30610463#3','157539099#0']:
-                test = 1
-
-            if is_secondary_hospital:
-                tset = 2
-
             if (to_edge in ['-30610463#1','-30610463#3','157539099#0'] and mode != 'passenger') or is_secondary_hospital:
                 mode = 'passenger'
                 _mode, _ptype, _vtype = sumoutils.get_intermodal_mode_parameters(

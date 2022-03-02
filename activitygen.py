@@ -351,8 +351,6 @@ class MobilityGenerator():
                                 total += 1
                                 if building_type:
                                     self._env._primary_buildings_counter[building_type] += 1
-                                if building_type == 'main-hospital':
-                                    test = 1
                                 for stage in _person_trip['stages']:
                                     if stage.description.startswith('P'):
                                         lane = stage.edges.split('_')
@@ -401,12 +399,6 @@ class MobilityGenerator():
 
     def _generate_trip(self, from_building, to_area, activity_chain, modes, is_secondary_hospital):
         """ Returns the trip for the given activity chain. """
-
-        #if activity_chain == ["Home", "S-Short", "Home"] or activity_chain == ["Home", "S-Long", "Home"]:
-        #    test = 1
-
-        #if activity_chain == ["Home", "P-Day", "Home"]:
-        #    test = 1
 
         trip = None
         solutions = []

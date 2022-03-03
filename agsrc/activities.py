@@ -97,10 +97,13 @@ class Activities():
             ## Origin and Destination Selection
             from_edge, to_edge, building_type = self._env.select_pair(from_building, to_area)
 
+            '''
+            # NOTE: Used to force all hospital workers and visitors to use passenger mode
             if (to_edge in ['-30610463#1','-30610463#3','157539099#0'] and mode != 'passenger') or is_secondary_hospital:
                 mode = 'passenger'
                 _mode, _ptype, _vtype = sumoutils.get_intermodal_mode_parameters(
                     mode, self._conf['intermodalOptions']['vehicleAllowedParking'])
+            '''
 
             from_allowed = (
                 self._env.sumo_network.getEdge(from_edge).allows('pedestrian') and

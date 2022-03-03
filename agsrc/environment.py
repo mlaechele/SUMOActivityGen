@@ -599,13 +599,13 @@ class Environment():
         p_edge = None
         building_type = None
 
-        if rand_type in range(0,10): # main hospital buildings
+        if rand_type in range(0,7): # main hospital buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('main-hospital')
-        elif rand_type in range(10,15): # hospital buildings
+        elif rand_type in range(7,12): # hospital buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('hospital')
-        elif rand_type in range(15,42): # commercial buildings
+        elif rand_type in range(12,40): # commercial buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('commercial')
-        elif rand_type in range(42,71): # industrial buildings
+        elif rand_type in range(40,70): # industrial buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('industrial')
         else: # downtown buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('downtown')

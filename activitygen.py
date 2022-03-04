@@ -48,7 +48,7 @@ def get_options(cmd_args):
         prog='activitygen.py', usage='%(prog)s -c configuration.json',
         description='SUMO Activity-Based Mobility Generator')
     parser.add_argument(
-        '-c', type=str, dest='config', default="../osm_activitygen.json", required=False,
+        '-c', type=str, dest='config', default="osm_activitygen.json", required=False,
         help='JSON configuration file.')
     parser.add_argument(
         '--profiling', dest='profiling', action='store_true',
@@ -360,7 +360,11 @@ class MobilityGenerator():
                                         edge = lane[0]
                                         if edge in ['-30610463#1','-30610463#3','157539099#0']:
                                             self._env._primary_buildings_counter['real-hospital'] += 1
-                                        break
+                                    elif stage.description.startswith('S'):
+                                        lane = stage.edges.split('_')
+                                        edge = lane[0]
+                                        if edge == '-30610463#5':
+                                            self._env._primary_buildings_counter['real-hospital-visitors'] += 1
 
                             else:
                                 self.logger.critical(
@@ -568,7 +572,7 @@ class MobilityGenerator():
                         stage.fromEdge, stage.toEdge,
                         arrivalPos=stage.arrivalPos,
                         depart=_current_depart_time, walkFactor=.9,
-                        modes='walk', pType=_ptype, vType=_vtype)
+                        modes='', pType='pedestrian', vType='')
 
                     if not sumoutils.is_valid_route(
                     'walk', route, self._conf['intermodalOptions']['vehicleAllowedParking']):

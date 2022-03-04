@@ -100,6 +100,7 @@ class Environment():
             'downtown': 0,
             'main-hospital': 0,
             'real-hospital': 0,
+            'real-hospital-visitors': 0,
             'hospital': 0,
         }
         self._store_buildings_categorized()

@@ -91,17 +91,13 @@ class Environment():
             'commercial': [],
             'industrial': [],
             'downtown': [],
-            'main-hospital': [],
-            'hospital': [],
+            'additional': [],
         }
         self._primary_buildings_counter = {
             'commercial': 0,
             'industrial': 0,
             'downtown': 0,
-            'main-hospital': 0,
-            'real-hospital': 0,
-            'real-hospital-visitors': 0,
-            'hospital': 0,
+            'additional': 0
         }
         self._store_buildings_categorized()
 
@@ -123,18 +119,15 @@ class Environment():
                     self._buildings['industrial'].append(building)
                 if building_type == 'downtown':
                     self._buildings['downtown'].append(building)
-                if building_type == 'main-hospital':
-                    self._buildings['main-hospital'].append(building)
-                if building_type == 'hospital':
-                    self._buildings['hospital'].append(building)
+                if building_type == 'additional':
+                    self._buildings['additional'].append(building)
         self.logger.info(
-            'Stored %d residential, %d commercial, %d industrial, %d downtown, %d hospital, and %d main-hospital buildings', 
+            'Stored %d residential, %d commercial, %d industrial, %d downtown, %d additional', 
             len(self._buildings['residential']),
             len(self._buildings['commercial']),
             len(self._buildings['industrial']),
             len(self._buildings['downtown']),
-            len(self._buildings['main-hospital']),
-            len(self._buildings['hospital'])
+            len(self._buildings['additional'])
         )
 
     # From sumolib _initRTree
@@ -600,11 +593,9 @@ class Environment():
         p_edge = None
         building_type = None
 
-        if rand_type in range(0,7): # main hospital buildings
-            g_edge, p_edge, building_type = self._get_random_building_edges('main-hospital')
-        elif rand_type in range(7,12): # hospital buildings
-            g_edge, p_edge, building_type = self._get_random_building_edges('hospital')
-        elif rand_type in range(12,40): # commercial buildings
+        if rand_type in range(0,10): # additional buildings
+            g_edge, p_edge, building_type = self._get_random_building_edges('additional')
+        elif rand_type in range(10,40): # commercial buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('commercial')
         elif rand_type in range(40,70): # industrial buildings
             g_edge, p_edge, building_type = self._get_random_building_edges('industrial')

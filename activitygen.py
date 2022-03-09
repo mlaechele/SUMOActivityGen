@@ -32,8 +32,6 @@ from tqdm import tqdm
 
 from agsrc import activities, environment, sagaexceptions, sumoutils
 
-total_hospital_visitors = 1000
-
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
     import traci
@@ -262,7 +260,6 @@ class MobilityGenerator():
                 _pr.enable()
             
             total_population = self._env.get_total_population()
-            hospital_visitor_counter = int(total_population / total_hospital_visitors)
             with tqdm(total=total_population) as pbar:
                 entity_id = 1
 
@@ -279,14 +276,10 @@ class MobilityGenerator():
                             continue
 
                         for _ in range(int(population)):
-                            is_secondary_hospital = False
-                            if entity_id % hospital_visitor_counter == 0:
-                                is_secondary_hospital = True
+                        
                             ## Select the activity chain
                             _index = self._random_generator.choice(activity_index, p=activity_chains_weights)
                             
-                            if is_secondary_hospital:
-                                _index = self._random_generator.randint(2, len(activity_chains))
                             _chain, _modes = activity_chains[_index]
                             self.logger.debug('_compute_trips_per_slice: Chain: %s', '{}'.format(_chain))
                             self.logger.debug('_compute_trips_per_slice: Modes: %s', '{}'.format(_modes))
@@ -304,7 +297,7 @@ class MobilityGenerator():
                                     _final_chain, _stages, _selected_mode, building_type = self._generate_trip(
                                         building,
                                         self._conf['taz'][m_slice['loc_primary']],
-                                        _chain, _modes, is_secondary_hospital)
+                                        _chain, _modes)
 
                                     ## Generating departure time
                                     _depart = numpy.round(_final_chain[1].start, decimals=2)
@@ -354,17 +347,6 @@ class MobilityGenerator():
                                 total += 1
                                 if building_type:
                                     self._env._primary_buildings_counter[building_type] += 1
-                                for stage in _person_trip['stages']:
-                                    if stage.description.startswith('P'):
-                                        lane = stage.edges.split('_')
-                                        edge = lane[0]
-                                        if edge in ['-30610463#1','-30610463#3','157539099#0']:
-                                            self._env._primary_buildings_counter['real-hospital'] += 1
-                                    elif stage.description.startswith('S'):
-                                        lane = stage.edges.split('_')
-                                        edge = lane[0]
-                                        if edge == '-30610463#5':
-                                            self._env._primary_buildings_counter['real-hospital-visitors'] += 1
 
                             else:
                                 self.logger.critical(
@@ -404,7 +386,7 @@ class MobilityGenerator():
 
     ## ---- Functions for _compute_trips_per_slice: _generate_trip, _generate_intermodal_trip_traci ---- ##
 
-    def _generate_trip(self, from_building, to_area, activity_chain, modes, is_secondary_hospital):
+    def _generate_trip(self, from_building, to_area, activity_chain, modes):
         """ Returns the trip for the given activity chain. """
 
         trip = None
@@ -441,7 +423,7 @@ class MobilityGenerator():
             while not _person_steps and _error_counter < self._max_retry_number:
                 try:
                     _person_steps, _person_stages, building_type, mode = self._generate_intermodal_trip_traci(
-                        from_building, to_area, activity_chain, mode, is_secondary_hospital)
+                        from_building, to_area, activity_chain, mode)
                 except sagaexceptions.TripGenerationGenericError:
                     _person_steps = None
                     _error_counter += 1
@@ -467,14 +449,14 @@ class MobilityGenerator():
                     activity_chain, _interpr_modes))
         return trip
 
-    def _generate_intermodal_trip_traci(self, from_building, to_area, activity_chain, mode, is_secondary_hospital):
+    def _generate_intermodal_trip_traci(self, from_building, to_area, activity_chain, mode):
         """ Return the person trip for a given mode generated with TraCI """
 
         self.logger.debug(
             ' ====================== _generate_intermodal_trip_traci ====================== ')
 
         _person_stages, building_type, mode = self._chains.generate_person_stages(
-            from_building, to_area, activity_chain, mode, is_secondary_hospital)
+            from_building, to_area, activity_chain, mode)
 
         _person_steps = []
         _current_depart_time = None

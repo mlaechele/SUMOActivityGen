@@ -13,6 +13,7 @@ import collections
 import csv
 import logging
 import os
+import pickle
 from pprint import pformat
 from shutil import ExecError
 import sys
@@ -64,7 +65,13 @@ class Environment():
         self._parking_cache = dict()
         self._parking_position = dict()
         self._load_parkings(conf['SUMOadditionals']['parkings'])
-        self._map_parkings_to_net_edges(max_search_radius=3200)
+
+        try:
+            with open('osm_parking_edge_mapping.pkl','rb') as f:
+                self._parkings_by_edge_id = pickle.load(f)
+        except IOError:
+            self._map_parkings_to_net_edges(max_search_radius=3200)
+            self._dump_parking_data()
 
         self.logger.info('Loading SUMO taxi stands from file %s', conf['intermodalOptions']['taxiStands'])
         self._sumo_taxi_stands = collections.defaultdict(list)
@@ -348,6 +355,9 @@ class Environment():
         self.logger.info('Done. Mapping contains %s entries.', str(len(self._parkings_by_edge_id)))
         self.logger.info('Skipped %s edges in mapping cause max radius search failed.', str(len(skipped_edges)))
 
+    def _dump_parking_data(self):
+        with open('osm_parking_edge_mapping.pkl', 'wb') as f:
+            pickle.dump(self._parkings_by_edge_id, f)
 
     # LANES & EDGES
 

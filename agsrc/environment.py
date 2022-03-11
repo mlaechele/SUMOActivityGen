@@ -67,7 +67,7 @@ class Environment():
         self._load_parkings(conf['SUMOadditionals']['parkings'])
 
         try:
-            with open('osm_parking_edge_mapping.pkl','rb') as f:
+            with open('/Users/rikardo.marenzzi/umpf/SUMO/umpf/sumo-files-landau/osm/osm_parking_edge_mapping.pkl','rb') as f:
                 self._parkings_by_edge_id = pickle.load(f)
         except IOError:
             self._map_parkings_to_net_edges(max_search_radius=3200)
@@ -669,3 +669,21 @@ class Environment():
 
     def get_primary_buildings_counter(self):
         return self._primary_buildings_counter
+    
+    def get_timing_from_activity(self, activity):
+        """ Compute start and duration from the activity defined in the config file. """
+        start = None
+        if self._conf['activities'][activity]['start']:
+            start = self._random_generator.normal(
+                loc=self._conf['activities'][activity]['start']['m'],
+                scale=self._conf['activities'][activity]['start']['s'])
+            if start < 0:
+                return self.get_timing_from_activity(activity)
+        duration = None
+        if self._conf['activities'][activity]['duration']:
+            duration = self._random_generator.normal(
+                loc=self._conf['activities'][activity]['duration']['m'],
+                scale=self._conf['activities'][activity]['duration']['s'])
+            if duration <= 0:
+                return self.get_timing_from_activity(activity)
+        return start, duration

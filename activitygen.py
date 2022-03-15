@@ -32,7 +32,7 @@ from tqdm import tqdm
 
 from agsrc import activities, environment, sagaexceptions, sumoutils
 
-total_hospital_visitors = 1000
+total_hospital_visitors = 1500
 
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))

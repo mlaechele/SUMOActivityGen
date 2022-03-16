@@ -2,7 +2,6 @@
 import os
 import sys
 import random
-import collections
 from agsrc import environment
 import json
 import logging
@@ -20,7 +19,7 @@ ROUTES_TPL = """<?xml version="1.0" encoding="UTF-8"?>
 </routes>"""
 
 VEHICLE = """
-<vehicle id="{id}" type="passenger" depart="{depart}">{route}
+<vehicle id="{id}" type="passenger" depart="{depart}" departLane="best">{route}
 </vehicle>"""
 
 ROUTE = """
@@ -40,7 +39,7 @@ else:
 logger = None
 this_script_file = os.path.realpath(__file__)
 this_script_directory = os.path.dirname(this_script_file)
-filename = '../osm_activitygen.json'
+filename = '../osm_activitygen_commuter.json'
 config_file = os.path.join(this_script_directory, filename)
 conf = json.loads(open(config_file).read())
 
@@ -70,30 +69,75 @@ env = environment.Environment(
 
 # %%
 
-start_edges = "202155857"
-end_edge = "31947791"
+commuter_config = {
+    "a65_nord": {
+        "start": "204365351",
+        "end": "294893885",
+        "amount": 2501,
+    },
+    "a65_süd": {
+        "start": "204211401",
+        "end": "204205696",
+        "amount": 667,
+    },
+    "b272_ost": {
+        "start": "365249200",
+        "end": "-365249200",
+        "amount": 1787,
+    },
+    "l506": {
+        "start": "-80007569#1",
+        "end": "80007569#1",
+        "amount": 1525,
+    },
+    "b10_west": {
+        "start": "254340256",
+        "end": "-387838396",
+        "amount": 5430,
+    },
+    "b38_süd_west": {
+        "start": "73595126#0",
+        "end": "-73595126#0",
+        "amount": 4429,
+    },
+
+}
+
 trips = []
 final_trips = ""
-for commuter_id in range(1,30):
 
-    start, duration = env.get_timing_from_activity("P-Day")
+for commuter_key in commuter_config:
+    start_edges = commuter_config[commuter_key]["start"]
+    end_edge = commuter_config[commuter_key]["end"]
 
-    building_type_index = random.randint(1,len(env._buildings) - 1)
-    key = list(env._buildings.keys())[building_type_index]
+    for commuter_id in range(1,commuter_config[commuter_key]["amount"]):
 
-    buildings = env._buildings[key]
+        start, duration = env.get_timing_from_activity("P-Day")
 
-    building_index = random.randint(0,len(buildings) - 1)
+        rand_type = random.randint(0, 100)
 
-    building = buildings[building_index]
-    building_g_edge = building[2]
+        if rand_type in range(0,10): # additional buildings
+            key = 'additional'
+        elif rand_type in range(10,40): # commercial buildings
+            key = 'commercial'
+        elif rand_type in range(40,70): # industrial buildings
+            key = 'industrial'
+        else: # downtown buildings
+            key = 'downtown'
 
-    parking_area = env._parkings_by_edge_id[building_g_edge]
-    parking_area_id = parking_area[0]
-    parkingEdge = parking_area[1]
+        buildings = env._buildings[key]
 
-    edges = start_edges + " " + parkingEdge + " " + end_edge
-    trips.append((VEHICLE.format(id = "commuter_" + str(commuter_id), depart=str(start),route=ROUTE.format(edges=edges) + " "+ STOP.format(parking_area=parking_area_id,duration=duration)),start))
+        building_index = random.randint(0,len(buildings) - 1)
+
+        building = buildings[building_index]
+        building_g_edge = building[2]
+
+        parking_area = env._parkings_by_edge_id[building_g_edge]
+        parking_area_id = parking_area[0]
+        parkingEdge = parking_area[1]
+
+        edges = start_edges + " " + parkingEdge + " " + end_edge
+        trips.append((VEHICLE.format(id = "commuter_" + commuter_key + "_" + str(commuter_id), depart=str(start),route=ROUTE.format(edges=edges) + " "+ STOP.format(parking_area=parking_area_id,duration=duration)),start))
 
 trips = sorted(trips,key=lambda t:t[1])
 
@@ -102,9 +146,7 @@ for trip, _ in trips:
 
 this_script_file = os.path.realpath(__file__)
 this_script_directory = os.path.dirname(this_script_file)
-filename = 'osm_commuter.rou.xml'
+filename = '../osm_commuter_incoming.rou.xml'
 output_file = os.path.join(this_script_directory, filename)
 with open(output_file, 'w', encoding="utf8") as tripfile:
     tripfile.write(ROUTES_TPL.format(trips=final_trips))
-
-# %%

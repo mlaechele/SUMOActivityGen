@@ -67,7 +67,7 @@ class Environment():
         self._load_parkings(conf['SUMOadditionals']['parkings'])
 
         try:
-            with open('/Users/rikardo.marenzzi/umpf/SUMO/umpf/sumo-files-landau/osm/osm_parking_edge_mapping.pkl','rb') as f:
+            with open('/Users/rikardo.marenzzi/umpf/SUMO/sumo-files-landau/osm/osm_parking_edge_mapping.pkl','rb') as f:
                 self._parkings_by_edge_id = pickle.load(f)
         except IOError:
             self._map_parkings_to_net_edges(max_search_radius=3200)

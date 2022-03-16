@@ -39,7 +39,7 @@ else:
 logger = None
 this_script_file = os.path.realpath(__file__)
 this_script_directory = os.path.dirname(this_script_file)
-filename = '../osm_activitygen_commuter.json'
+filename = '../osm_activitygen_rikardo.json'
 config_file = os.path.join(this_script_directory, filename)
 conf = json.loads(open(config_file).read())
 

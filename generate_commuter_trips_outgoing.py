@@ -37,7 +37,7 @@ with open(input_file, 'rb') as f:
 logger = None
 this_script_file = os.path.realpath(__file__)
 this_script_directory = os.path.dirname(this_script_file)
-filename = '../osm_activitygen_commuter.json'
+filename = '../osm_activitygen_rikardo.json'
 config_file = os.path.join(this_script_directory, filename)
 conf = json.loads(open(config_file).read())
 
@@ -87,7 +87,6 @@ commuter_config = {
         "start": "204365351",
         "end": "294893885",
         "amount": 1979,
-        #"amount": 50,
     },
     "a65_süd": {
         "start": "204211401",
@@ -134,19 +133,19 @@ for dict_trips in all_trips.values():
                 "time": time,
                 "person": person
             })
-        else:
+            break
+        elif stage.description.startswith('S'):
             secondary_person_trips.append({
                 "type": "S",
                 "time": time,
                 "person": person
             })
+            break
 
 
 commuter_outgoing_amount = 0
 for key in commuter_config:
     commuter_outgoing_amount += commuter_config[key]["amount"]
-
-#commuter_outgoing_amount = 100
 
 random_trip_sample, remaining_trips = _get_random_sample_from_list(primary_person_trips,commuter_outgoing_amount)
 

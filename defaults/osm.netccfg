@@ -93,6 +93,7 @@
         <osm.stop-output.length.tram value="25"/>
         <osm.stop-output.length.train value="200"/>
         <osm.all-attributes value="false"/>
+        <ignore-change-restrictions value="all"/>
     </formats>
 
     <report>

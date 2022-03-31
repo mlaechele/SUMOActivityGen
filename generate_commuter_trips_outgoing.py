@@ -106,12 +106,22 @@ commuter_config = {
     "b10_west": {
         "start": "254340256",
         "end": "-387838396",
-        "amount": 2114,
+        "amount": 1281,
     },
     "b38_süd_west": {
         "start": "73595126#0",
         "end": "-73595126#0",
-        "amount": 2114,
+        "amount": 1281,
+    },
+    "boechingen_nord_west": {
+        "start": "-16180418#1",
+        "end": "16180418#1",
+        "amount": 409,
+    },
+    "edesheim_nord": {
+        "start": "-201055134#1",
+        "end": "201055134#1",
+        "amount": 1281,
     },
 
 }
